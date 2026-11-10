@@ -15,8 +15,14 @@ namespace SeoLinkChecker
         static readonly string[] Scopes = { SheetsService.Scope.Spreadsheets };
         static readonly string ApplicationName = "SEO Playwright Checker";
 
+        // ===== SPREADSHEET CONFIGURATION & COLUMN MAPPING =====
         static readonly string SpreadsheetId = "INSERT_YOUR_SPREADSHEET_ID_HERE";
         static readonly string SheetName = "Sheet1";
+        // Column mapping based on 0-based index from data array:
+        // Index 1 (Column B) = Anchor Text
+        // Index 2 (Column C) = Target URL / Website to find
+        // Index 4 (Column E) = Ready Link / Donor Page URL to check
+        // Index 5 (Column F) = Status / Error output column
 
         static async Task Main(string[] args)
         {
@@ -36,13 +42,17 @@ namespace SeoLinkChecker
             Console.WriteLine("Launching Playwright...");
             using var playwright = await Playwright.CreateAsync();
 
+            // ===== ANTI-DETECT BROWSER CDP CONNECTION =====
+            // WebSocket endpoint provided by Octo Browser or another anti-detect browser instance
             string wsEndpoint = "ws://127.0.0.1:9222/devtools/browser/INSERT_YOUR_DEBUG_PORT_HERE";
 
             Console.WriteLine("Connecting to anti-detect browser...");
             await using var browser = await playwright.Chromium.ConnectOverCDPAsync(wsEndpoint);
 
+            // Reusing the existing browser profile context (cookies, fingerprints, and proxies are pre-configured)
             var context = browser.Contexts[0];
 
+            // Fetching data starting from row 2, columns A to F
             var range = $"{SheetName}!A2:F";
             var request = service.Spreadsheets.Values.Get(SpreadsheetId, range);
             var response = await request.ExecuteAsync();
@@ -50,6 +60,7 @@ namespace SeoLinkChecker
 
             if (values != null && values.Count > 0)
             {
+                // Caching mechanism to skip duplicate checks for identical URL + Target combinations
                 Dictionary<string, string> checkedCache = new Dictionary<string, string>();
 
                 for (int i = 0; i < values.Count; i++)
@@ -59,7 +70,7 @@ namespace SeoLinkChecker
                     var targetLink = row.Count > 2 ? row[2].ToString().Trim().ToLower() : "";
                     var readyLink = row.Count > 4 ? row[4].ToString().Trim() : "";
 
-                    int rowIndex = i + 1;
+                    int rowIndex = i + 1; // 1-based index offset for sheet update
 
                     if (string.IsNullOrEmpty(readyLink) || !readyLink.StartsWith("http")) continue;
 
@@ -99,9 +110,11 @@ namespace SeoLinkChecker
                         }
                         else
                         {
+                            // Scroll down to trigger lazy loading / dynamic elements
                             await page.EvaluateAsync("window.scrollTo(0, document.body.scrollHeight)");
                             await Task.Delay(3000);
 
+                            // Click "Show more" or load buttons if present
                             await page.EvaluateAsync(@"() => {
                                 const elements = document.querySelectorAll('button, span, div');
                                 for (let el of elements) {
@@ -115,6 +128,7 @@ namespace SeoLinkChecker
                             }");
                             await Task.Delay(2000);
 
+                            // Check for robots noindex meta tags
                             bool hasNoIndex = await page.EvaluateAsync<bool>(@"() => {
                                 const metaTags = document.querySelectorAll('meta[name=""robots""]');
                                 for (let meta of metaTags) {
@@ -129,6 +143,7 @@ namespace SeoLinkChecker
                             }
                             else
                             {
+                                // Analyze links and anchor texts inside the page DOM
                                 var linkCheckResult = await page.EvaluateAsync<string>(@"
     ([targetLink, anchor]) => {
         try {
@@ -190,6 +205,7 @@ namespace SeoLinkChecker
                     }
                     finally
                     {
+                        // Safe tab closing with exception handling
                         try
                         {
                             await page.CloseAsync();
@@ -213,22 +229,23 @@ namespace SeoLinkChecker
             Console.WriteLine("Check completed.");
         }
 
+        // ===== GOOGLE SHEETS UPDATE & COLOR FORMATTING METHOD =====
         static async Task UpdateRowInSheet(SheetsService service, string spreadsheetId, string sheetName, int rowIndex, string errorText, bool isSuccess)
         {
             Color bgColor;
 
             if (isSuccess)
             {
-                bgColor = new Color { Red = 0.43f, Green = 0.82f, Blue = 0.56f };
+                bgColor = new Color { Red = 0.43f, Green = 0.82f, Blue = 0.56f }; // Soft green
             }
             else if (errorText == "incorrect link_pink_icon")
             {
-                bgColor = new Color { Red = 0.96f, Green = 0.76f, Blue = 0.76f };
+                bgColor = new Color { Red = 0.96f, Green = 0.76f, Blue = 0.76f }; // Soft pink/red
                 errorText = "incorrect link";
             }
             else
             {
-                bgColor = new Color { Red = 1f, Green = 0f, Blue = 0f };
+                bgColor = new Color { Red = 1f, Green = 0f, Blue = 0f }; // Bright red for errors
             }
 
             var valueRange = new ValueRange { Values = new List<IList<object>> { new List<object> { errorText } } };
@@ -247,6 +264,7 @@ namespace SeoLinkChecker
                 if (s.Properties.Title == sheetName) { sheetId = s.Properties.SheetId; break; }
             }
 
+            // Apply background color to column E (Ready Link cell, index 4)
             batchUpdateRequest.Requests.Add(new Request
             {
                 RepeatCell = new RepeatCellRequest

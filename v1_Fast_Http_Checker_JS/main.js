@@ -1,28 +1,34 @@
-﻿var SHEET_NAME   = "";
-var COL_ANCHOR   = 2;
-var COL_TARGET   = 3;
-var COL_URL      = 5;
-var COL_STATUS   = 6;
-var PAINT_URL_CELL = true;
-var IMAGE_LINK_COUNTS_AS_ANCHOR = true;
-var STRICT_URL_MATCH = true;
-var BATCH_SIZE   = 10;
-var MAX_RUNTIME_MS = 4.5 * 60 * 1000;
+﻿// ===== CONFIGURATION & SPREADSHEET COLUMN MAPPING =====
+var SHEET_NAME   = "";   // Name of the target sheet; leave empty ("") to use the currently active sheet
+var COL_ANCHOR   = 2;    // Column index for Anchor Text (Column B = 2)
+var COL_TARGET   = 3;    // Column index for Target URL / Website to find (Column C = 3)
+var COL_URL      = 5;    // Column index for Donor/Source Page URL to check (Column E = 5)
+var COL_STATUS   = 6;    // Column index where validation results and statuses will be written (Column F = 6)
 
+// ===== BEHAVIOR & PERFORMANCE SETTINGS =====
+var PAINT_URL_CELL = true;                // Whether to highlight the URL cell with a status color
+var IMAGE_LINK_COUNTS_AS_ANCHOR = true;   // Treat <a><img></a> tags as valid anchor matches if alt text matches
+var STRICT_URL_MATCH = true;             // true = exact URL match required; false = partial matching allowed
+var BATCH_SIZE   = 10;                    // Number of pages to fetch and process in parallel
+var MAX_RUNTIME_MS = 4.5 * 60 * 1000;    // Execution time limit (set to 4.5 minutes to stay safe below Google's 6-min limit)
+
+// ===== STATUS COLORS =====
 var COLORS = {
-  success: "#6ed18e",
-  warn:    "#ff0000",
-  error:   "#ff0000",
-  bot:     "#ff0000",
-  gray:    "#ff0000"
+  success: "#6ed18e", // Green - link found successfully with correct anchor
+  warn:    "#ff0000", // Red - warning / incorrect anchor or link mismatch
+  error:   "#ff0000", // Red - technical error, 404, or broken link
+  bot:     "#ff0000", // Red - bot protection triggered (Cloudflare, captcha)
+  gray:    "#ff0000"  // Red/Gray - empty or white page detected
 };
 
+// ===== HTTP HEADERS =====
 var HEADERS = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
   "Accept": "text/html,application/xhtml+xml",
   "Accept-Language": "en-US,en;q=0.9"
 };
 
+// ===== SOFT 404 & ERROR PATTERNS =====
 var NOT_FOUND_PATTERNS = [
   "page not found", "page does not exist", "doesn't exist", "doesn’t exist",
   "not found", "página no encontrada", "pagina no encontrada",
@@ -30,6 +36,7 @@ var NOT_FOUND_PATTERNS = [
   "сторінку не знайдено", "сторінка не знайдена", "страница не найдена"
 ];
 
+// ===== SPREADSHEET UI MENU =====
 function onOpen() {
   try {
     SpreadsheetApp.getUi()
@@ -53,9 +60,10 @@ function stopAuto() {
   notify_("Auto-resume stopped.", false);
 }
 
+// ===== MAIN PROCESSING LOOP =====
 function runCheck_(mode, silent) {
   var startTime = Date.now();
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME) || SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   if (!sheet) {
     notify_("Error: sheet not found '" + SHEET_NAME + "'.", silent);
     return;
@@ -146,6 +154,7 @@ function notify_(msg, silent) {
   try { SpreadsheetApp.getUi().alert(msg); } catch (e) {}
 }
 
+// ===== PAGE VALIDATION LOGIC =====
 function checkPage_(url, anchor, targetRaw, firstResp) {
   var resp = fetchWithRedirects_(url, firstResp);
 
@@ -220,6 +229,7 @@ function analyzeLinks_(html, pageUrl, anchor, targetRaw) {
   return { status: "no link", color: COLORS.error };
 }
 
+// ===== HTTP FETCH & REDIRECT HANDLING =====
 function fetchWithRedirects_(startUrl, firstResp) {
   var url = startUrl, redirected = false;
   var options = { muteHttpExceptions: true, followRedirects: false, headers: HEADERS };
@@ -246,6 +256,7 @@ function fetchWithRedirects_(startUrl, firstResp) {
   return { code: 310, html: "", finalUrl: url, redirected: true };
 }
 
+// ===== HELPER FUNCTIONS =====
 function visibleText_(html) {
   return html.replace(/<script[\s\S]*?<\/script>/gi, "")
              .replace(/<style[\s\S]*?<\/style>/gi, "")
