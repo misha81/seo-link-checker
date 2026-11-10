@@ -17,7 +17,7 @@ An advanced desktop application built with C# and Microsoft Playwright.
 - Bypasses Cloudflare and other bot-checks.
 - Uses **Google Sheets API** to read targets and write verification results back to the cloud in real-time.
 
-- ### [v3_Link_Collector_GAS](./v3_Link_Collector_GAS)
+### [v3_Link_Collector_GAS](./v3_Link_Collector_GAS)
 A utility Google Apps Script designed to aggregate and transpose scattered backlink placement data from date-based columns into a clean, structured report sheet.
 
 ## 🛠 Tech Stack
